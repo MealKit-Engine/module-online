@@ -1,7 +1,7 @@
-// Steamworks 구현 (ASTER_STEAM 빌드에서만 컴파일된다).
-#include "aster/platform/Steam.h"
+// Steamworks 구현 (MEALKIT_STEAM 빌드에서만 컴파일된다).
+#include "mealkit/platform/Steam.h"
 
-#include "aster/core/Log.h"
+#include "mealkit/core/Log.h"
 
 #include <cstdlib>
 #include <cstring>
@@ -13,7 +13,7 @@
 #include <steam/steam_api.h>
 #pragma warning(pop)
 
-namespace aster::steam {
+namespace mealkit::steam {
 namespace {
 
 bool g_available = false;
@@ -70,12 +70,12 @@ bool compiledIn() { return true; }
 bool init() {
     if (g_available) return true;
     if (!SteamAPI_Init()) {
-        ASTER_ERROR("Steam: SteamAPI_Init failed - is the Steam client running and steam_appid.txt next to the exe?");
+        MEALKIT_ERROR("Steam: SteamAPI_Init failed - is the Steam client running and steam_appid.txt next to the exe?");
         return false;
     }
     SteamNetworkingUtils()->InitRelayNetworkAccess(); // 릴레이 경로를 미리 준비해 첫 접속을 빠르게
     g_available = true;
-    ASTER_INFO("Steam: logged in as %s (app %u)", SteamFriends()->GetPersonaName(), SteamUtils()->GetAppID());
+    MEALKIT_INFO("Steam: logged in as %s (app %u)", SteamFriends()->GetPersonaName(), SteamUtils()->GetAppID());
     return true;
 }
 
@@ -113,25 +113,25 @@ struct Lobby::Impl {
 
     void onCreated(LobbyCreated_t* result, bool ioFailure) {
         if (ioFailure || result->m_eResult != k_EResultOK) {
-            ASTER_ERROR("Steam: could not create a lobby (result %d)", ioFailure ? -1 : static_cast<int>(result->m_eResult));
+            MEALKIT_ERROR("Steam: could not create a lobby (result %d)", ioFailure ? -1 : static_cast<int>(result->m_eResult));
             state = LobbyState::Failed;
             return;
         }
         lobby = CSteamID(result->m_ulSteamIDLobby);
-        SteamMatchmaking()->SetLobbyData(lobby, "engine", "aster");
+        SteamMatchmaking()->SetLobbyData(lobby, "engine", "mealkit");
         state = LobbyState::InLobby;
-        ASTER_INFO("Steam: lobby %llu created", static_cast<unsigned long long>(result->m_ulSteamIDLobby));
+        MEALKIT_INFO("Steam: lobby %llu created", static_cast<unsigned long long>(result->m_ulSteamIDLobby));
     }
 
     void onEntered(LobbyEnter_t* result, bool ioFailure) {
         if (ioFailure || result->m_EChatRoomEnterResponse != k_EChatRoomEnterResponseSuccess) {
-            ASTER_ERROR("Steam: could not join the lobby");
+            MEALKIT_ERROR("Steam: could not join the lobby");
             state = LobbyState::Failed;
             return;
         }
         lobby = CSteamID(result->m_ulSteamIDLobby);
         state = LobbyState::InLobby;
-        ASTER_INFO("Steam: joined lobby %llu", static_cast<unsigned long long>(result->m_ulSteamIDLobby));
+        MEALKIT_INFO("Steam: joined lobby %llu", static_cast<unsigned long long>(result->m_ulSteamIDLobby));
     }
 
     void onJoinRequested(GameLobbyJoinRequested_t* request) { pendingJoin = request->m_steamIDLobby.ConvertToUint64(); }
@@ -192,4 +192,4 @@ u64 Lobby::parseLaunchLobby(int argc, char** argv) {
     return 0;
 }
 
-} // namespace aster::steam
+} // namespace mealkit::steam
