@@ -33,7 +33,8 @@ public:
         SteamNetworkingIdentity identity;
         identity.SetSteamID64(to.steamId);
         const EResult r = SteamNetworkingMessages()->SendMessageToUser(
-            identity, data, size, k_nSteamNetworkingSend_UnreliableNoNagle | k_nSteamNetworkingSend_AutoRestartBrokenSession, 0);
+            identity, data, size,
+            k_nSteamNetworkingSend_UnreliableNoNagle | k_nSteamNetworkingSend_AutoRestartBrokenSession, 0);
         return r == k_EResultOK;
     }
 
@@ -113,7 +114,8 @@ struct Lobby::Impl {
 
     void onCreated(LobbyCreated_t* result, bool ioFailure) {
         if (ioFailure || result->m_eResult != k_EResultOK) {
-            MEALKIT_ERROR("Steam: could not create a lobby (result %d)", ioFailure ? -1 : static_cast<int>(result->m_eResult));
+            MEALKIT_ERROR("Steam: could not create a lobby (result %d)",
+                          ioFailure ? -1 : static_cast<int>(result->m_eResult));
             state = LobbyState::Failed;
             return;
         }
@@ -149,7 +151,8 @@ void Lobby::create(u32 maxMembers) {
         return;
     }
     m->state = LobbyState::Creating;
-    m->created.Set(SteamMatchmaking()->CreateLobby(k_ELobbyTypeFriendsOnly, static_cast<int>(maxMembers)), m, &Impl::onCreated);
+    m->created.Set(SteamMatchmaking()->CreateLobby(k_ELobbyTypeFriendsOnly, static_cast<int>(maxMembers)), m,
+                   &Impl::onCreated);
 }
 
 void Lobby::join(u64 lobbyId) {
