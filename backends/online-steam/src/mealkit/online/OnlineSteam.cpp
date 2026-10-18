@@ -1,9 +1,8 @@
-// Steamworks 구현 (MEALKIT_STEAM 빌드에서만 컴파일된다).
-#include "mealkit/platform/Steam.h"
+// Steam 백엔드 (Steamworks SDK가 있는 게임 빌드에서만 컴파일된다, MEALKIT_STEAM=1).
+#include "mealkit/online/Online.h"
 
 #include "mealkit/core/Log.h"
 
-#include <cstdlib>
 #include <cstring>
 #include <deque>
 
@@ -13,10 +12,8 @@
 #include <steam/steam_api.h>
 #pragma warning(pop)
 
-namespace mealkit::steam {
+namespace mealkit::online {
 namespace {
-
-bool g_available = false;
 
 // Steam 릴레이로 메시지를 주고받는다. 세션 요청은 모두 받아들이고, 실제 접속 허가는 락스텝 세션이
 // 빌드/씬 해시로 검사한다.
@@ -66,42 +63,8 @@ private:
 
 } // namespace
 
-bool compiledIn() { return true; }
-
-bool init() {
-    if (g_available) return true;
-    if (!SteamAPI_Init()) {
-        MEALKIT_ERROR("Steam: SteamAPI_Init failed - is the Steam client running and steam_appid.txt next to the exe?");
-        return false;
-    }
-    SteamNetworkingUtils()->InitRelayNetworkAccess(); // 릴레이 경로를 미리 준비해 첫 접속을 빠르게
-    g_available = true;
-    MEALKIT_INFO("Steam: logged in as %s (app %u)", SteamFriends()->GetPersonaName(), SteamUtils()->GetAppID());
-    return true;
-}
-
-void shutdown() {
-    if (!g_available) return;
-    SteamAPI_Shutdown();
-    g_available = false;
-}
-
-void runCallbacks() {
-    if (g_available) SteamAPI_RunCallbacks();
-}
-
-bool available() { return g_available; }
-u64 localSteamId() { return g_available ? SteamUser()->GetSteamID().ConvertToUint64() : 0; }
-std::string personaName() { return g_available ? SteamFriends()->GetPersonaName() : std::string(); }
-
-std::unique_ptr<net::Transport> createTransport() {
-    if (!g_available) return nullptr;
-    return std::make_unique<SteamTransport>();
-}
-
-// ---------------------------------------------------------------- 로비
-
-struct Lobby::Impl {
+struct Service::Impl {
+    bool available = false;
     LobbyState state = LobbyState::None;
     CSteamID lobby;
     u64 pendingJoin = 0;
@@ -137,16 +100,50 @@ struct Lobby::Impl {
     }
 
     void onJoinRequested(GameLobbyJoinRequested_t* request) { pendingJoin = request->m_steamIDLobby.ConvertToUint64(); }
+
+    u64 owner() const {
+        return state == LobbyState::InLobby ? SteamMatchmaking()->GetLobbyOwner(lobby).ConvertToUint64() : 0;
+    }
 };
 
-Lobby::Lobby() : m(new Impl()) {}
-Lobby::~Lobby() {
-    leave();
+Service::Service() : m(new Impl()) {}
+Service::~Service() {
+    shutdown();
     delete m;
 }
 
-void Lobby::create(u32 maxMembers) {
-    if (!g_available) {
+Backend Service::backend() { return Backend::Steam; }
+const char* Service::backendName() { return "Steam"; }
+
+bool Service::init() {
+    if (m->available) return true;
+    if (!SteamAPI_Init()) {
+        MEALKIT_ERROR("Steam: SteamAPI_Init failed - is the Steam client running and steam_appid.txt next to the exe?");
+        return false;
+    }
+    SteamNetworkingUtils()->InitRelayNetworkAccess(); // 릴레이 경로를 미리 준비해 첫 접속을 빠르게
+    m->available = true;
+    MEALKIT_INFO("Steam: logged in as %s (app %u)", SteamFriends()->GetPersonaName(), SteamUtils()->GetAppID());
+    return true;
+}
+
+void Service::shutdown() {
+    if (!m->available) return;
+    leaveLobby();
+    SteamAPI_Shutdown();
+    m->available = false;
+}
+
+void Service::update() {
+    if (m->available) SteamAPI_RunCallbacks();
+}
+
+bool Service::available() const { return m->available; }
+u64 Service::localUserId() const { return m->available ? SteamUser()->GetSteamID().ConvertToUint64() : 0; }
+std::string Service::displayName() const { return m->available ? SteamFriends()->GetPersonaName() : std::string(); }
+
+void Service::createLobby(u32 maxMembers) {
+    if (!m->available) {
         m->state = LobbyState::Failed;
         return;
     }
@@ -155,8 +152,8 @@ void Lobby::create(u32 maxMembers) {
                    &Impl::onCreated);
 }
 
-void Lobby::join(u64 lobbyId) {
-    if (!g_available) {
+void Service::joinLobby(u64 lobbyId) {
+    if (!m->available) {
         m->state = LobbyState::Failed;
         return;
     }
@@ -164,35 +161,36 @@ void Lobby::join(u64 lobbyId) {
     m->entered.Set(SteamMatchmaking()->JoinLobby(CSteamID(lobbyId)), m, &Impl::onEntered);
 }
 
-void Lobby::leave() {
-    if (g_available && m->state == LobbyState::InLobby) SteamMatchmaking()->LeaveLobby(m->lobby);
+void Service::leaveLobby() {
+    if (m->available && m->state == LobbyState::InLobby) SteamMatchmaking()->LeaveLobby(m->lobby);
     m->state = LobbyState::None;
 }
 
-void Lobby::inviteFriends() {
-    if (g_available && m->state == LobbyState::InLobby) SteamFriends()->ActivateGameOverlayInviteDialog(m->lobby);
+void Service::inviteFriends() {
+    if (m->available && m->state == LobbyState::InLobby) SteamFriends()->ActivateGameOverlayInviteDialog(m->lobby);
 }
 
-LobbyState Lobby::state() const { return m->state; }
-bool Lobby::isOwner() const { return m->state == LobbyState::InLobby && ownerSteamId() == localSteamId(); }
-u64 Lobby::lobbyId() const { return m->state == LobbyState::InLobby ? m->lobby.ConvertToUint64() : 0; }
-u64 Lobby::ownerSteamId() const {
-    return m->state == LobbyState::InLobby ? SteamMatchmaking()->GetLobbyOwner(m->lobby).ConvertToUint64() : 0;
-}
-u32 Lobby::memberCount() const {
+LobbyState Service::lobbyState() const { return m->state; }
+bool Service::isLobbyOwner() const { return m->state == LobbyState::InLobby && m->owner() == localUserId(); }
+u64 Service::lobbyId() const { return m->state == LobbyState::InLobby ? m->lobby.ConvertToUint64() : 0; }
+u32 Service::lobbyMemberCount() const {
     return m->state == LobbyState::InLobby ? static_cast<u32>(SteamMatchmaking()->GetNumLobbyMembers(m->lobby)) : 0;
 }
+net::Address Service::lobbyOwnerAddress() const {
+    net::Address address;
+    address.steamId = m->owner();
+    return address;
+}
 
-u64 Lobby::takeJoinRequest() {
+u64 Service::takeJoinRequest() {
     const u64 id = m->pendingJoin;
     m->pendingJoin = 0;
     return id;
 }
 
-u64 Lobby::parseLaunchLobby(int argc, char** argv) {
-    for (int i = 1; i + 1 < argc; ++i)
-        if (std::strcmp(argv[i], "+connect_lobby") == 0) return std::strtoull(argv[i + 1], nullptr, 10);
-    return 0;
+std::unique_ptr<net::Transport> Service::createTransport() {
+    if (!m->available) return nullptr;
+    return std::make_unique<SteamTransport>();
 }
 
-} // namespace mealkit::steam
+} // namespace mealkit::online
