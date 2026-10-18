@@ -3,6 +3,7 @@
 #include "mealkit/online/Online.h"
 
 #include "mealkit/core/Log.h"
+#include "mealkit/core/Version.h"
 
 namespace mealkit::online {
 
@@ -17,7 +18,8 @@ Backend Service::backend() { return Backend::None; }
 const char* Service::backendName() { return "none"; }
 
 bool Service::init() {
-    MEALKIT_WARN("Online: this build has no online backend (Steam needs the Steamworks SDK, see docs/GUIDE.md)");
+    MEALKIT_WARN("Online: this build has no online backend (Steam needs the Steamworks SDK, see " MEALKIT_DOCS_URL
+                 "manual/multiplayer.html#steamworks)");
     return false;
 }
 void Service::shutdown() {}
