@@ -26,9 +26,9 @@ public:
     }
 
     bool send(const net::Address& to, const void* data, u32 size) override {
-        if (!to.steamId) return false;
+        if (!to.userId) return false;
         SteamNetworkingIdentity identity;
-        identity.SetSteamID64(to.steamId);
+        identity.SetSteamID64(to.userId);
         const EResult r = SteamNetworkingMessages()->SendMessageToUser(
             identity, data, size,
             k_nSteamNetworkingSend_UnreliableNoNagle | k_nSteamNetworkingSend_AutoRestartBrokenSession, 0);
@@ -47,7 +47,7 @@ public:
         const u32 size = static_cast<u32>(msg->m_cbSize) < capacity ? static_cast<u32>(msg->m_cbSize) : capacity;
         std::memcpy(buffer, msg->m_pData, size);
         from = {};
-        from.steamId = msg->m_identityPeer.GetSteamID64();
+        from.userId = msg->m_identityPeer.GetSteamID64();
         msg->Release();
         return static_cast<i32>(size);
     }
@@ -178,7 +178,7 @@ u32 Service::lobbyMemberCount() const {
 }
 net::Address Service::lobbyOwnerAddress() const {
     net::Address address;
-    address.steamId = m->owner();
+    address.userId = m->owner();
     return address;
 }
 

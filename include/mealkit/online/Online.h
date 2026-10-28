@@ -11,14 +11,16 @@
 //
 // 백엔드는 빌드 때 하나를 고른다 (구현은 백엔드별 .cpp, CMake가 고른다):
 //   Steam  third_party/steamworks/sdk 가 있는 게임 빌드 (OnlineSteam.cpp). 개발 중에는 앱 ID 480(Spacewar, steam_appid.txt)
+//   EOS    third_party/eos/sdk + credentials.txt 가 있는 게임 빌드 (OnlineEOS.cpp). 기기 ID로 EOS Connect 로그인(Epic 계정 없음),
+//          로비 id는 방장이 정한 숫자 코드(로비 속성 MKCODE), 사용자 id는 Product User ID 문자열의 64비트 해시
 //   None   SDK가 없는 빌드와 Editor 빌드 (OnlineNone.cpp). 로비가 없고, 접속은 net::UdpTransport(IP 직접)로 한다
-// EOS(3단계)와 콘솔 플랫폼 서비스(5단계)도 여기에 백엔드로 더한다. 업적·통계·리더보드(4단계)와 클라우드 세이브(1단계 "세이브")는
+// 고르기는 CMake MEALKIT_ONLINE (Auto: Steam 먼저). 콘솔 플랫폼 서비스(5단계)도 여기에 백엔드로 더한다. 업적·통계·리더보드(4단계)와 클라우드 세이브(1단계 "세이브")는
 // 그 항목에서 이 클래스에 더한다.
 //
 // 플랫폼 SDK가 프로세스 전역이라 한 프로세스에 Service는 하나만 만든다. main이 만들어 필요한 곳에 인자로 넘긴다.
 namespace mealkit::online {
 
-enum class Backend : u8 { None, Steam };
+enum class Backend : u8 { None, Steam, EOS };
 
 enum class LobbyState : u8 { None, Creating, Joining, InLobby, Failed };
 
@@ -32,7 +34,7 @@ public:
     static Backend backend(); // 이 빌드에 들어간 백엔드
     static const char* backendName();
 
-    // 백엔드에 로그인한다 (Steam: 클라이언트가 실행 중이어야 한다). None 백엔드는 항상 false.
+    // 백엔드에 로그인한다 (Steam: 클라이언트가 실행 중이어야 한다, EOS: 인터넷, 몇 초까지 기다린다). None 백엔드는 항상 false.
     bool init();
     void shutdown();
     void update();          // 매 프레임 호출 (콜백 처리)
@@ -46,7 +48,7 @@ public:
     void createLobby(u32 maxMembers);
     void joinLobby(u64 lobbyId);
     void leaveLobby();
-    void inviteFriends(); // 플랫폼 오버레이의 초대 창
+    void inviteFriends(); // 플랫폼 오버레이의 초대 창 (EOS: 친구 목록이 없어 로비 코드를 로그에 쓴다)
     LobbyState lobbyState() const;
     bool isLobbyOwner() const;
     u64 lobbyId() const;
