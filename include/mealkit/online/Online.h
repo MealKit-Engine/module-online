@@ -52,6 +52,8 @@ public:
     u64 lobbyId() const;
     u32 lobbyMemberCount() const;
     net::Address lobbyOwnerAddress() const;
+    // 로비 소유자를 넘긴다 (소유자만, 호스트 이전: 플랫폼이 고른 새 소유자를 락스텝 승계자와 맞춘다)
+    void setLobbyOwner(u64 userId);
 
     // 친구 초대를 수락해 들어온 로비 참가 요청. 없으면 0.
     u64 takeJoinRequest();

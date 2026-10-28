@@ -182,6 +182,12 @@ net::Address Service::lobbyOwnerAddress() const {
     return address;
 }
 
+void Service::setLobbyOwner(u64 userId) {
+    if (!isLobbyOwner() || userId == 0 || userId == localUserId()) return;
+    if (SteamMatchmaking()->SetLobbyOwner(m->lobby, CSteamID(userId)))
+        MEALKIT_INFO("Steam lobby owner -> %llu (host migration)", static_cast<unsigned long long>(userId));
+}
+
 u64 Service::takeJoinRequest() {
     const u64 id = m->pendingJoin;
     m->pendingJoin = 0;

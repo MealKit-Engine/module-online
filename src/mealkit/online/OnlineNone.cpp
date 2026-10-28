@@ -37,6 +37,7 @@ bool Service::isLobbyOwner() const { return false; }
 u64 Service::lobbyId() const { return 0; }
 u32 Service::lobbyMemberCount() const { return 0; }
 net::Address Service::lobbyOwnerAddress() const { return {}; }
+void Service::setLobbyOwner(u64) {}
 u64 Service::takeJoinRequest() { return 0; }
 std::unique_ptr<net::Transport> Service::createTransport() { return nullptr; }
 
