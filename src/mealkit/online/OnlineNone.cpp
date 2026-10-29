@@ -1,5 +1,5 @@
-// 온라인 백엔드 없음: Steamworks SDK가 없는 빌드와 Editor 빌드. 로비는 없고 접속은 UDP(IP 직접)로 한다.
-// third_party/steamworks/sdk 에 SDK를 풀면 OnlineSteam.cpp가 대신 빌드된다.
+// No online backend: builds without the Steamworks SDK and Editor builds. No lobbies; connecting uses UDP (direct IP).
+// Extracting the SDK to third_party/steamworks/sdk builds OnlineSteam.cpp instead.
 #include "mealkit/online/Online.h"
 
 #include "mealkit/core/Log.h"

@@ -6,18 +6,18 @@
 #include <memory>
 #include <string>
 
-// 온라인 서비스 계층 (docs/CODING_MODEL.md "온라인 기능"): 계정, 친구 초대, 로비, P2P 릴레이 전송.
-// 게임과 엔진의 나머지는 플랫폼 SDK를 직접 부르지 않고 이것만 쓴다.
+// Online services layer (docs/CODING_MODEL.md "Online features"): accounts, friend invites, lobbies, P2P relay transport.
+// The game and the rest of the engine don't call platform SDKs directly; they only use this.
 //
-// 백엔드는 빌드 때 하나를 고른다 (구현은 백엔드별 .cpp, CMake가 고른다):
-//   Steam  third_party/steamworks/sdk 가 있는 게임 빌드 (OnlineSteam.cpp). 개발 중에는 앱 ID 480(Spacewar, steam_appid.txt)
-//   EOS    third_party/eos/sdk + credentials.txt 가 있는 게임 빌드 (OnlineEOS.cpp). 기기 ID로 EOS Connect 로그인(Epic 계정 없음),
-//          로비 id는 방장이 정한 숫자 코드(로비 속성 MKCODE), 사용자 id는 Product User ID 문자열의 64비트 해시
-//   None   SDK가 없는 빌드와 Editor 빌드 (OnlineNone.cpp). 로비가 없고, 접속은 net::UdpTransport(IP 직접)로 한다
-// 고르기는 CMake MEALKIT_ONLINE (Auto: Steam 먼저). 콘솔 플랫폼 서비스(5단계)도 여기에 백엔드로 더한다. 업적·통계·리더보드(4단계)와 클라우드 세이브(1단계 "세이브")는
-// 그 항목에서 이 클래스에 더한다.
+// One backend is chosen at build time (implementations in per-backend .cpp files, chosen by CMake):
+//   Steam  game builds with third_party/steamworks/sdk (OnlineSteam.cpp). During development app ID 480 (Spacewar, steam_appid.txt)
+//   EOS    game builds with third_party/eos/sdk + credentials.txt (OnlineEOS.cpp). EOS Connect login with device ID (no Epic account),
+//          lobby id is a numeric code chosen by the host (lobby attribute MKCODE), user id is a 64-bit hash of the Product User ID string
+//   None   builds without an SDK and Editor builds (OnlineNone.cpp). No lobbies; connecting uses net::UdpTransport (direct IP)
+// Selected by CMake MEALKIT_ONLINE (Auto: Steam first). Console platform services (stage 5) are also added here as backends. Achievements/stats/leaderboards (stage 4) and cloud saves (stage 1 "Saves")
+// are added to this class in those items.
 //
-// 플랫폼 SDK가 프로세스 전역이라 한 프로세스에 Service는 하나만 만든다. main이 만들어 필요한 곳에 인자로 넘긴다.
+// Platform SDKs are process-global, so only one Service is made per process. main creates it and passes it as an argument where needed.
 namespace mealkit::online {
 
 enum class Backend : u8 { None, Steam, EOS };
@@ -31,36 +31,36 @@ public:
     Service(const Service&) = delete;
     Service& operator=(const Service&) = delete;
 
-    static Backend backend(); // 이 빌드에 들어간 백엔드
+    static Backend backend(); // backend included in this build
     static const char* backendName();
 
-    // 백엔드에 로그인한다 (Steam: 클라이언트가 실행 중이어야 한다, EOS: 인터넷, 몇 초까지 기다린다). None 백엔드는 항상 false.
+    // Logs into the backend (Steam: the client must be running, EOS: internet, waits up to a few seconds). Always false for the None backend.
     bool init();
     void shutdown();
-    void update();          // 매 프레임 호출 (콜백 처리)
-    bool available() const; // init 성공
+    void update();          // call every frame (processes callbacks)
+    bool available() const; // init succeeded
 
-    // 계정
+    // Account
     u64 localUserId() const;
     std::string displayName() const;
 
-    // 친구 전용 로비. 방장이 락스텝 호스트가 되고, 참가자는 lobbyOwnerAddress()로 접속한다.
+    // Friends-only lobby. The host becomes the lockstep host, and participants connect via lobbyOwnerAddress().
     void createLobby(u32 maxMembers);
     void joinLobby(u64 lobbyId);
     void leaveLobby();
-    void inviteFriends(); // 플랫폼 오버레이의 초대 창 (EOS: 친구 목록이 없어 로비 코드를 로그에 쓴다)
+    void inviteFriends(); // invite window of the platform overlay (EOS: no friend list, so the lobby code is written to the log)
     LobbyState lobbyState() const;
     bool isLobbyOwner() const;
     u64 lobbyId() const;
     u32 lobbyMemberCount() const;
     net::Address lobbyOwnerAddress() const;
-    // 로비 소유자를 넘긴다 (소유자만, 호스트 이전: 플랫폼이 고른 새 소유자를 락스텝 승계자와 맞춘다)
+    // Transfers lobby ownership (owner only, host migration: matches the new owner chosen by the platform with the lockstep successor)
     void setLobbyOwner(u64 userId);
 
-    // 친구 초대를 수락해 들어온 로비 참가 요청. 없으면 0.
+    // Lobby join request from accepting a friend invite. 0 if none.
     u64 takeJoinRequest();
 
-    // 플랫폼 릴레이 P2P 전송 (NAT·방화벽을 플랫폼이 처리한다). 사용 불가면 nullptr.
+    // Platform relay P2P transport (the platform handles NAT/firewalls). nullptr if unavailable.
     std::unique_ptr<net::Transport> createTransport();
 
 private:

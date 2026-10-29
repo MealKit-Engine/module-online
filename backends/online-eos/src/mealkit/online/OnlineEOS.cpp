@@ -1,7 +1,7 @@
-// EOS 백엔드 (EOS SDK와 third_party/eos/credentials.txt 가 있는 게임 빌드, MEALKIT_EOS=1).
-// 로그인은 EOS Connect (Epic 계정 없음). Steam SDK도 있는 빌드(MEALKIT_EOS_STEAM=1)는 Steam 웹 API 티켓으로 로그인하고
-// 친구 초대는 Steam 오버레이로 로비 코드를 싣는다(+connect_lobby <코드>). Steam이 없거나 포털에 Steam ID 공급자가 없으면 기기 ID.
-// 한 OS 사용자에 기기 ID가 하나라 같은 PC의 두 프로세스는 같은 사용자가 된다 (두 명 시험은 PC 두 대).
+// EOS backend (game builds with the EOS SDK and third_party/eos/credentials.txt, MEALKIT_EOS=1).
+// Login is EOS Connect (no Epic account). Builds that also have the Steam SDK (MEALKIT_EOS_STEAM=1) log in with a Steam web API ticket and
+// friend invites carry the lobby code through the Steam overlay (+connect_lobby <code>). Without Steam or without a Steam ID provider in the portal, device ID.
+// One OS user has one device ID, so two processes on the same PC become the same user (two-player tests need two PCs).
 #include "mealkit/online/Online.h"
 
 #include "mealkit/core/Log.h"
@@ -31,13 +31,13 @@ namespace mealkit::online {
 namespace {
 
 constexpr const char* kSocketName = "mealkit";
-constexpr const char* kCodeKey = "MKCODE";  // 로비 속성: 방장이 정한 숫자 코드 (joinLobby의 lobbyId)
+constexpr const char* kCodeKey = "MKCODE";  // lobby attribute: numeric code chosen by the host (lobbyId of joinLobby)
 constexpr const char* kBucket = "mealkit";
 constexpr f64 kLoginTimeoutSeconds = 15.0;
-constexpr const char* kSteamIdentity = "epiconlineservices"; // EOS가 받는 Steam 웹 API 티켓의 identity
-constexpr const char* kConnectPrefix = "+connect_lobby ";     // Steam 초대 문자열 (GameOptions가 같은 인자를 읽는다)
+constexpr const char* kSteamIdentity = "epiconlineservices"; // identity of the Steam web API ticket EOS accepts
+constexpr const char* kConnectPrefix = "+connect_lobby ";     // Steam invite string (GameOptions reads the same argument)
 
-// Product User ID 문자열 → 64비트 (FNV-1a). 락스텝은 u64 주소만 다루고, 실제 id는 Impl의 표에서 찾는다
+// Product User ID string → 64 bits (FNV-1a). Lockstep only handles u64 addresses; the real id is looked up in Impl's table
 u64 hashUserId(EOS_ProductUserId id) {
     if (!id) return 0;
     char text[EOS_PRODUCTUSERID_MAX_LENGTH + 1] = {};
@@ -51,12 +51,12 @@ u64 hashUserId(EOS_ProductUserId id) {
 EOS_P2P_SocketId socketId() {
     EOS_P2P_SocketId s = {};
     s.ApiVersion = EOS_P2P_SOCKETID_API_LATEST;
-    std::memcpy(s.SocketName, kSocketName, std::strlen(kSocketName)); // 나머지는 0
+    std::memcpy(s.SocketName, kSocketName, std::strlen(kSocketName)); // the rest is 0
     return s;
 }
 
 void EOS_CALL onLog(const EOS_LogMessage* message) {
-    // 기기 ID가 이미 있다는 오류는 정상 경로다 (login이 EOS_DuplicateNotAllowed를 그대로 받아들인다)
+    // An error saying the device ID already exists is the normal path (login accepts EOS_DuplicateNotAllowed as is)
     if (std::strstr(message->Message, "DeviceId access credentials already exist")) return;
     if (message->Level <= EOS_ELogLevel::EOS_LOG_Error) MEALKIT_ERROR("EOS %s: %s", message->Category, message->Message);
     else if (message->Level <= EOS_ELogLevel::EOS_LOG_Warning) MEALKIT_WARN("EOS %s: %s", message->Category, message->Message);
@@ -70,25 +70,25 @@ struct Service::Impl {
     EOS_HLobby lobbies = nullptr;
     EOS_HP2P p2p = nullptr;
     EOS_ProductUserId localUser = nullptr;
-    bool initialized = false; // EOS_Initialize (프로세스에 한 번)
+    bool initialized = false; // EOS_Initialize (once per process)
     bool available = false;
     bool loginDone = false;
-    bool deviceLogin = false; // Steam 로그인이 안 되어 기기 ID로 했다
+    bool deviceLogin = false; // Steam login failed, so device ID was used
     std::string name;
 
     LobbyState state = LobbyState::None;
-    std::string lobby; // EOS 로비 id
-    u64 code = 0;      // 방장이 정한 숫자 코드
+    std::string lobby; // EOS lobby id
+    u64 code = 0;      // numeric code chosen by the host
     u64 owner = 0;
     u32 members = 0;
     u64 pendingJoin = 0;
     EOS_HLobbySearch search = nullptr;
     EOS_NotificationId connectionRequest = EOS_INVALID_NOTIFICATIONID;
 
-    std::unordered_map<u64, EOS_ProductUserId> users; // 해시 → Product User ID (로비 멤버와 받은 패킷에서)
+    std::unordered_map<u64, EOS_ProductUserId> users; // hash → Product User ID (from lobby members and received packets)
 
 #if MEALKIT_EOS_STEAM
-    bool steam = false; // SteamAPI_Init 성공
+    bool steam = false; // SteamAPI_Init succeeded
     bool ticketDone = false;
     HAuthTicket ticket = k_HAuthTicketInvalid;
     std::string ticketHex;
@@ -112,14 +112,14 @@ struct Service::Impl {
         ticketDone = true;
     }
 
-    // Steam 친구 초대 수락 (게임이 이미 실행 중일 때. 꺼져 있으면 Steam이 +connect_lobby 인자로 실행한다)
+    // Accepting a Steam friend invite (when the game is already running. If not running, Steam launches it with a +connect_lobby argument)
     void onRichJoin(GameRichPresenceJoinRequested_t* r) {
         const size_t prefix = std::strlen(kConnectPrefix);
         if (std::strncmp(r->m_rgchConnect, kConnectPrefix, prefix) == 0)
             pendingJoin = std::strtoull(r->m_rgchConnect + prefix, nullptr, 10);
     }
 
-    // 친구 목록의 [게임 참가]가 이 로비로 오도록
+    // So [Join Game] in the friends list comes to this lobby
     void setPresence() {
         if (!steam) return;
         if (state == LobbyState::InLobby) {
@@ -143,7 +143,7 @@ struct Service::Impl {
         return it == users.end() ? nullptr : it->second;
     }
 
-    // 로비 소유자·멤버를 SDK의 로컬 사본에서 다시 읽는다 (매 프레임, 네트워크 없음)
+    // Rereads lobby owner/members from the SDK's local copy (every frame, no network)
     void refreshLobby() {
         owner = 0;
         members = 0;
@@ -174,7 +174,7 @@ struct Service::Impl {
         search = nullptr;
     }
 
-    // --- 로그인: 기기 ID 만들기(이미 있으면 그대로) → Connect 로그인 → 처음이면 사용자 만들기 ---
+    // --- Login: create device ID (keep if it exists) → Connect login → create user the first time ---
     void login() {
         EOS_Connect_CreateDeviceIdOptions o = {};
         o.ApiVersion = EOS_CONNECT_CREATEDEVICEID_API_LATEST;
@@ -202,7 +202,7 @@ struct Service::Impl {
         credentials.Token = token;
         EOS_Connect_UserLoginInfo info = {};
         info.ApiVersion = EOS_CONNECT_USERLOGININFO_API_LATEST;
-        info.DisplayName = name.c_str(); // 기기 ID 로그인만 쓴다 (Steam은 Steam 이름)
+        info.DisplayName = name.c_str(); // only used for device ID login (Steam uses the Steam name)
         EOS_Connect_LoginOptions o = {};
         o.ApiVersion = EOS_CONNECT_LOGIN_API_LATEST;
         o.Credentials = &credentials;
@@ -222,7 +222,7 @@ struct Service::Impl {
                     else MEALKIT_ERROR("EOS: could not create the user (%s)", EOS_EResult_ToString(created->ResultCode));
                     s->loginDone = true;
                 });
-            } else if (!self->deviceLogin) { // Steam 로그인 실패: 포털 Identity Providers에 Steam이 없거나 티켓이 틀림
+            } else if (!self->deviceLogin) { // Steam login failed: Steam isn't in the portal's Identity Providers or the ticket is wrong
                 MEALKIT_WARN("EOS: Steam login failed (%s) - add Steam under Identity Providers in the Epic developer "
                              "portal. Using the device id instead",
                              EOS_EResult_ToString(result->ResultCode));
@@ -234,7 +234,7 @@ struct Service::Impl {
         });
     }
 
-    // --- 로비 ---
+    // --- Lobby ---
     void setCodeAttribute() {
         EOS_Lobby_UpdateLobbyModificationOptions o = {};
         o.ApiVersion = EOS_LOBBY_UPDATELOBBYMODIFICATION_API_LATEST;
@@ -315,10 +315,10 @@ struct Service::Impl {
         EOS_LobbyDetails_Release(details);
     }
 
-    class Transport; // EOS P2P 전송 (아래)
+    class Transport; // EOS P2P transport (below)
 };
 
-// EOS P2P (NAT 통과, 안 되면 Epic 릴레이). 연결 요청은 모두 받아들이고, 실제 접속 허가는 락스텝 세션이 검사한다
+// EOS P2P (NAT traversal, Epic relay if that fails). All connection requests are accepted; actual connection permission is checked by the lockstep session
 class Service::Impl::Transport final : public net::Transport {
 public:
     explicit Transport(Impl* m) : m_impl(m) {}
@@ -335,7 +335,7 @@ public:
         o.Channel = 0;
         o.DataLengthBytes = size;
         o.Data = data;
-        o.bAllowDelayedDelivery = EOS_TRUE; // 연결이 열리는 동안의 첫 패킷도 버리지 않는다
+        o.bAllowDelayedDelivery = EOS_TRUE; // don't drop the first packets while the connection is opening
         o.Reliability = EOS_EPacketReliability::EOS_PR_UnreliableUnordered;
         return EOS_P2P_SendPacket(m_impl->p2p, &o) == EOS_EResult::EOS_Success;
     }
@@ -392,7 +392,7 @@ bool Service::init() {
     p.DeploymentId = MEALKIT_EOS_DEPLOYMENT_ID;
     p.ClientCredentials.ClientId = MEALKIT_EOS_CLIENT_ID;
     p.ClientCredentials.ClientSecret = MEALKIT_EOS_CLIENT_SECRET;
-    p.Flags = EOS_PF_DISABLE_OVERLAY; // Epic 계정·오버레이를 쓰지 않는다
+    p.Flags = EOS_PF_DISABLE_OVERLAY; // no Epic account/overlay
     m->platform = EOS_Platform_Create(&p);
     if (!m->platform) {
         MEALKIT_ERROR("EOS: EOS_Platform_Create failed - check third_party/eos/credentials.txt");
@@ -411,7 +411,7 @@ bool Service::init() {
     };
 
 #if MEALKIT_EOS_STEAM
-    // Steam 계정: 웹 API 티켓 → EOS Connect (EOS_ECT_STEAM_SESSION_TICKET)
+    // Steam account: web API ticket → EOS Connect (EOS_ECT_STEAM_SESSION_TICKET)
     if (!m->steam) m->steam = SteamAPI_Init();
     if (m->steam) {
         m->name = SteamFriends()->GetPersonaName();
@@ -432,7 +432,7 @@ bool Service::init() {
     m->deviceIdLogin();
 #endif
 
-    // 로그인을 기다린다 (보통 1초 안, 인터넷이 없으면 kLoginTimeoutSeconds 뒤 실패)
+    // Wait for login (usually under 1 second; without internet, fails after kLoginTimeoutSeconds)
     while (!m->loginDone && waiting()) {
         EOS_Platform_Tick(m->platform);
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
@@ -475,7 +475,7 @@ void Service::shutdown() {
         if (m->connectionRequest != EOS_INVALID_NOTIFICATIONID)
             EOS_P2P_RemoveNotifyPeerConnectionRequest(m->p2p, m->connectionRequest);
         m->connectionRequest = EOS_INVALID_NOTIFICATIONID;
-        for (int i = 0; i < 20; ++i) EOS_Platform_Tick(m->platform); // 로비 나가기 요청을 보낸다
+        for (int i = 0; i < 20; ++i) EOS_Platform_Tick(m->platform); // sends the leave lobby request
         EOS_Platform_Release(m->platform);
         m->platform = nullptr;
     }
@@ -493,7 +493,7 @@ void Service::shutdown() {
 #endif
     if (m->initialized) {
         EOS_Shutdown();
-        m->initialized = false; // EOS_Shutdown 뒤에는 이 프로세스에서 다시 초기화할 수 없다
+        m->initialized = false; // after EOS_Shutdown it can't be reinitialized in this process
     }
 }
 
@@ -516,13 +516,13 @@ void Service::createLobby(u32 maxMembers) {
         return;
     }
     m->state = LobbyState::Creating;
-    std::random_device device; // 로비 코드만 (시뮬레이션과 무관)
-    m->code = 100000 + (static_cast<u64>(device()) % 900000); // 사람이 불러 줄 수 있는 여섯 자리
+    std::random_device device; // lobby code only (unrelated to the simulation)
+    m->code = 100000 + (static_cast<u64>(device()) % 900000); // six digits a person can read out
     EOS_Lobby_CreateLobbyOptions o = {};
     o.ApiVersion = EOS_LOBBY_CREATELOBBY_API_LATEST;
     o.LocalUserId = m->localUser;
     o.MaxLobbyMembers = maxMembers;
-    o.PermissionLevel = EOS_ELobbyPermissionLevel::EOS_LPL_PUBLICADVERTISED; // 코드로 찾으려면 검색에 보여야 한다
+    o.PermissionLevel = EOS_ELobbyPermissionLevel::EOS_LPL_PUBLICADVERTISED; // must be visible in searches to be found by code
     o.bPresenceEnabled = EOS_FALSE;
     o.bAllowInvites = EOS_TRUE;
     o.BucketId = kBucket;

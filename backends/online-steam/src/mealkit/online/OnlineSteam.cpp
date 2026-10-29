@@ -1,4 +1,4 @@
-// Steam 백엔드 (Steamworks SDK가 있는 게임 빌드에서만 컴파일된다, MEALKIT_STEAM=1).
+// Steam backend (compiled only in game builds with the Steamworks SDK, MEALKIT_STEAM=1).
 #include "mealkit/online/Online.h"
 
 #include "mealkit/core/Log.h"
@@ -15,8 +15,8 @@
 namespace mealkit::online {
 namespace {
 
-// Steam 릴레이로 메시지를 주고받는다. 세션 요청은 모두 받아들이고, 실제 접속 허가는 락스텝 세션이
-// 빌드/씬 해시로 검사한다.
+// Messages go through the Steam relay. All session requests are accepted; actual connection permission is checked by the lockstep session
+// with the build/scene hash.
 class SteamTransport final : public net::Transport {
 public:
     SteamTransport() : m_sessionRequest(this, &SteamTransport::onSessionRequest) {}
@@ -121,7 +121,7 @@ bool Service::init() {
         MEALKIT_ERROR("Steam: SteamAPI_Init failed - is the Steam client running and steam_appid.txt next to the exe?");
         return false;
     }
-    SteamNetworkingUtils()->InitRelayNetworkAccess(); // 릴레이 경로를 미리 준비해 첫 접속을 빠르게
+    SteamNetworkingUtils()->InitRelayNetworkAccess(); // prepares relay routes ahead of time to speed up the first connection
     m->available = true;
     MEALKIT_INFO("Steam: logged in as %s (app %u)", SteamFriends()->GetPersonaName(), SteamUtils()->GetAppID());
     return true;
