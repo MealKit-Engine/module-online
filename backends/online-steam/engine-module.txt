@@ -1,0 +1,11 @@
+# Engine module manifest (docs/ENGINE_MODULES.md "Manifest"). Checked by tools\check_modules.ps1.
+# requires: modules this folder may include besides the kernel (core, platform, jobs), as name minVersion.
+@format engine-module 1
+name online-steam
+version 0.1.0
+kernel 0.9
+kind view
+requires online 0.1
+provides online-backend
+tag online
+summary Steam backend of online::Service (SDK outside the repo; built when the SDK is present, MEALKIT_ONLINE)

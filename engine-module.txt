@@ -7,4 +7,4 @@ kernel 0.9
 kind view
 requires net 0.1
 tag online
-summary Online services (accounts, lobbies, invites, relays) with Steam and EOS backends
+summary Online services interface (accounts, lobbies, invites, relays) and the no-backend fallback; backends are online-steam and online-eos
