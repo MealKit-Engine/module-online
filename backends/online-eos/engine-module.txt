@@ -2,9 +2,10 @@
 # requires: modules this folder may include besides the kernel (core, platform, jobs), as name minVersion.
 @format engine-module 1
 name online-eos
-version 0.1.0
+version 0.1.1
 kernel 0.9
 kind view
+layer framework
 requires online 0.1
 provides online-backend
 tag online
